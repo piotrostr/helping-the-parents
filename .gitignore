@@ -6,4 +6,6 @@ wycena.txt
 EVE
 __pycache__
 sample
+.ipynb_checkpoints
+segmentation_cache
 
