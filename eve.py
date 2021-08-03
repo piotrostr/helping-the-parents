@@ -45,7 +45,7 @@ l1_loss = L1Loss()
 
 
 class EVE(nn.Module):
-    def __init__(self, output_predictions=False):
+    def __init__(self, output_predictions=True):
         super(EVE, self).__init__()
         self.output_predictions = output_predictions
 
@@ -57,11 +57,10 @@ class EVE(nn.Module):
         state_dict = torch.load('models/eve_refinenet_CGRU_oa_skip.pt')
         self.refine_net.load_state_dict(state_dict)
 
-    def forward(self, full_input_dict, create_images=False, current_epoch=None):
-        if self.training:  # pick first source
-            assert len(full_input_dict) == 1  # for now say there's 1 training data source
-            full_input_dict = next(iter(full_input_dict.values()))
-
+    def forward(self, 
+                full_input_dict, 
+                create_images=False, 
+                current_epoch=1.):
         # There are some labels that we need to calculate ourselves
         self.calculate_additional_labels(full_input_dict, current_epoch=current_epoch)
 

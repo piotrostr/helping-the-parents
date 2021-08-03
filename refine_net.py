@@ -253,3 +253,4 @@ class RefineNet(nn.Module):
             self.network(input_features, output_dict, previous_output_dict)
         )
         output_dict['heatmap_final'] = final_heatmap
+

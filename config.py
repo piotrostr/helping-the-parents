@@ -39,7 +39,7 @@ class DefaultConfig(object):
     eyes_size = [128, 128]  # width, height
     screen_size = [128, 72]  # width, height
     actual_screen_size = [1920, 1080]  # DO NOT CHANGE
-    camera_frame_type = 'eyes'  # full | face | eyes
+    camera_frame_type = 'full'  # full | face | eyes
     load_screen_content = True
     load_full_frame_for_visualization = False
 

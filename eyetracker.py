@@ -4,7 +4,7 @@ import ffmpeg
 import torch
 
 from eve import EVE
-from config import Config as cfg
+from EVE.src.datasources.eve_sequences import EVESequencesBase
 
 
 class EyeTracker:
@@ -28,3 +28,14 @@ class EyeTracker:
         stuff = None
         return stuff
 
+
+if __name__ == '__main__':
+    eve = EVE()
+    dataset = EVESequencesBase(
+        'sample/eve_dataset',
+        participants_to_use=['train01']
+    )
+    dataloader = torch.utils.data.DataLoader(dataset)
+    inp = next(iter(dataloader))
+    out = eve(inp)
+    
