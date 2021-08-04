@@ -8,4 +8,8 @@ __pycache__
 sample
 .ipynb_checkpoints
 segmentation_cache
+.DS_Store
+models/tinaface_r50_fpn_gn_dcn.pth
+vedadet
+BlazeFace-PyTorch
 
