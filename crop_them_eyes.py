@@ -3,9 +3,9 @@
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
+import argparse 
 
 from blazeface import BlazeFace
-from common import Eyes
 
 
 class Eyes:
@@ -46,22 +46,40 @@ def crop_eyes(img_original: np.ndarray, eyes: Eyes):
     return np.concatenate((eye_right, eye_left), axis=1)
     
 
-if __name__ == '__main__':
+def crop_eyes_of_video(path, output_path):
     blaze = BlazeFace()
     blaze.load_weights('models/blazeface.pth')
     blaze.load_anchors('models/anchors.npy')
-
     blaze.min_score_thresh = 0.75
     blaze.min_supppression_threshold = 0.3
 
-    img_original = cv2.imread('face_into_camera.jpg')[200: 550, 520: 770]
-    img = cv2.cvtColor(img_original, cv2.COLOR_BGR2RGB)
-    img = cv2.resize(img, (128, 128))
+    # TODO load tinaface
 
-    dets = blaze.predict_on_image(img)
-    _, _, _, _, right_x, right_y, left_x, left_y, *_ = dets.flatten()
-    eyes = Eyes(right_x, right_y, left_x, left_y)
-    eyes_img = crop_eyes(img_original, eyes)
-    plt.imshow(eyes_img)
-    plt.show()
+    cap = cv2.VideoCapture(path)
+    framerate = cap.get(cv2.CAP_PROP_FPS)
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(output_path, fourcc, int(framerate), (256, 128))
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        _frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        _frame = cv2.resize(_frame, (128, 128))
+        # TODO crop the face
+        dets = blaze.predict_on_image(_frame)
+        _, _, _, _, right_x, right_y, left_x, left_y, *_ = dets.flatten()
+        eyes_bit = crop_eyes(frame, Eyes(right_x, right_y, left_x, left_y))
+        out.write(eyes_bit)
+    cap.release()
+    out.release()
+    print(f'Saved to {output_path}')
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('path', type=str, help='video path')
+    parser.add_argument('output_path', type=str, help='output path')
+    args = parser.parse_args()
+
+    crop_eyes_of_video(args.path, args.output_path)
 
