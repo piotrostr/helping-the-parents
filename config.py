@@ -41,7 +41,7 @@ class DefaultConfig(object):
     actual_screen_size = [1920, 1080]  # DO NOT CHANGE
     camera_frame_type = 'full'  # full | face | eyes
     load_screen_content = True
-    load_full_frame_for_visualization = False
+    load_full_frame_for_visualization = True
 
     train_cameras = ['basler', 'webcam_l', 'webcam_c', 'webcam_r']
     train_stimuli = ['image', 'video', 'wikipedia']
