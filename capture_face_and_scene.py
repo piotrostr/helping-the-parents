@@ -51,13 +51,13 @@ def main():
     fh, fw, _ = face.shape
     fps = 25
 
-    scene_vid = cv2.VideoWriter('videos/scene.mp4', fourcc, fps, (sw, sh))
-    face_vid = cv2.VideoWriter('videos/face.mp4', fourcc, fps, (fw, fh))
+    scene_vid = cv2.VideoWriter('data/scene.mp4', fourcc, fps, (sw, sh))
+    face_vid = cv2.VideoWriter('data/face.mp4', fourcc, fps, (fw, fh))
 
     # override using the actual fps
     fps = check_fps(face_vid, scene_vid, cap, m)
-    scene_vid = cv2.VideoWriter('videos/scene.mp4', fourcc, fps, (sw, sh))
-    face_vid = cv2.VideoWriter('videos/face.mp4', fourcc, fps, (fw, fh))
+    scene_vid = cv2.VideoWriter('data/scene.mp4', fourcc, fps, (sw, sh))
+    face_vid = cv2.VideoWriter('data/face.mp4', fourcc, fps, (fw, fh))
 
     print('Capturing...')
     while True:
