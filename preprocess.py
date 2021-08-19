@@ -3,7 +3,49 @@ import cv2
 import matplotlib.pyplot as plt
 import scipy.io as sio
 
+from utils import make_weird
 from normalize_data import estimateHeadPose, normalizeData
+
+
+def preprocess_frames(frames):
+    """
+    :param frames: shape N x H x W x C
+    :returns frames: shape: N x C x H x W
+    """
+    frames = np.transpose(frames, [0, 3, 1, 2])
+    frames = frames.astype(np.float32)
+    frames *= 2.0 / 255.0
+    frames -= 1.0
+    frames = np.expand_dims(frames, axis=0)
+    return frames
+
+
+def get_frames_and_timestamps(path):
+    cap = cv2.VideoCapture(path)
+    frames = np.array([])
+    timestamps = []
+    frame_count = 0
+    if cap.isOpened():
+        print('Parsing frames...')
+        while True:
+            timestamp = cap.get(cv2.CAP_PROP_POS_MSEC)
+            ret, frame = cap.read()
+            frame_count += 1
+            try:
+                frame.shape
+            except:
+                break
+            if not len(frames):
+                frames = np.expand_dims(frame, axis=0)
+            else:
+                if timestamp == 0.0:
+                    fps = cap.get(cv2.CAP_PROP_FPS)
+                    timestamp = (float(frame_count) / fps) * 1000.
+                timestamps.append(timestamp)
+                frames = np.concatenate((frames, np.expand_dims(frame, axis=0)), axis=0)
+            print('.', end='')
+    print('\nDone!')
+    return frames, list(map(make_weird, timestamps))
 
 
 def normalize(img, mtx, dist, landmarks, gc):
