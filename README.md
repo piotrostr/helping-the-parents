@@ -38,7 +38,7 @@ The main goals of the project are to deliver an efficient pipeline for camera ca
 
 ### Data normalization
 
-code is in data_normalization folder, from:
+The algorithm for data normalization comes from
 
 ```
 @inproceedings{10.1145/3204493.3204548,
@@ -49,3 +49,5 @@ code is in data_normalization folder, from:
   booktitle = {Proceedings of the 2018 ACM Symposium on Eye Tracking Research &amp; Applications},
 }
 ```
+
+and can be found in the ```normalize_data.py``` file.

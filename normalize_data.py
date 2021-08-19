@@ -33,7 +33,7 @@ def normalizeData(img, face, hr, ht, gc, cam):
     ## normalized camera parameters
     focal_norm = 960 # focal length of normalized camera
     distance_norm = 600 # normalized distance between eye and camera
-    roiSize = (60, 36) # size of cropped eye image
+    roiSize = (128, 128) # size of cropped eye image
 
     img_u = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
