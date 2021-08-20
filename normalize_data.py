@@ -47,7 +47,7 @@ def normalizeData(img, face, hr, ht, gc, cam):
     
     ## normalize each eye
     data = []
-    for et in [re, le]:
+    for i, et in enumerate([re, le]):
         ## ---------- normalize image ----------
         distance = np.linalg.norm(et) # actual distance between eye and original camera
         
@@ -89,9 +89,9 @@ def normalizeData(img, face, hr, ht, gc, cam):
         gc_normalized = np.dot(R, gc_normalized)
         gc_normalized = gc_normalized/np.linalg.norm(gc_normalized)
         
-        data.append([img_warped, hr_norm, gc_normalized])
+        data.append([img_warped, hr_norm, gc_normalized, R, W])
         
-    return data
+    return hR, data
 
 if __name__ == '__main__':
     ## load calibration data, these paramters can be obtained by camera calibration functions in OpenCV

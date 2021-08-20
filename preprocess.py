@@ -55,8 +55,8 @@ def normalize(img, mtx, dist, landmarks, gc):
     face = sio.loadmat('./faceModelGeneric.mat')['model']
     face_pts = face.T.reshape(face.shape[1], 1, 3)
     hr, ht = estimateHeadPose(landmarks, face_pts, mtx, dist)
-    data = normalizeData(img, face, hr, ht, gc, mtx)
-    return data
+    hR, data = normalizeData(img, face, hr, ht, gc, mtx)
+    return hR, data
 
 
 def calibrate(images):
@@ -93,3 +93,18 @@ def undistort_image(img, mtx, dist):
     plt.show()
     return undistorted
 
+
+def solve_extrinsic_matrix(corners_world, corners_image, intrinsic_matrix, distortion):
+    """
+    https://github.com/HViktorTsoi/ACSC/
+    """
+    assert len(corners_world) == len(corners_image)
+    corners_world = np.array(corners_world)
+    corners_image = np.array(corners_image)
+    ret, rvec, tvec, inliers = cv2.solvePnPRansac(
+        corners_world, corners_image, intrinsic_matrix, distortion
+    )
+    rotation_m, _ = cv2.Rodrigues(rvec)
+    extrinsic_matrix = np.hstack([rotation_m, tvec])
+    extrinsic_matrix = np.vstack([extrinsic_matrix, [0, 0, 0, 1]])
+    return extrinsic_matrix, rvec, tvec
