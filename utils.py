@@ -1,3 +1,16 @@
+import torch
+
+from EVE.src.datasources.eve_sequences import EVESequencesBase
+
+
+def get_sample_input():
+    dataset = EVESequencesBase(
+        'sample/eve_dataset',
+        participants_to_use=['train01']
+    )
+    dataloader = torch.utils.data.DataLoader(dataset)
+    inp = next(iter(dataloader))
+    return inp
 
 def get_in_ms(x):
     try: 
