@@ -73,8 +73,8 @@ def normalizeData(img, face, hr, ht, gc, cam):
         
         W = np.dot(np.dot(cam_norm, S), np.dot(R, np.linalg.inv(cam))) # transformation matrix
         
-        img_warped = cv2.warpPerspective(img_u, W, roiSize) # image normalization
-        img_warped = cv2.equalizeHist(img_warped)
+        img_warped = cv2.warpPerspective(img, W, roiSize) # image normalization
+        # img_warped = cv2.equalizeHist(img_warped)
         
         ## ---------- normalize rotation ----------
         hR_norm = np.dot(R, hR) # rotation matrix in normalized space
