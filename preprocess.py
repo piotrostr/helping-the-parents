@@ -108,3 +108,4 @@ def solve_extrinsic_matrix(corners_world, corners_image, intrinsic_matrix, disto
     extrinsic_matrix = np.hstack([rotation_m, tvec])
     extrinsic_matrix = np.vstack([extrinsic_matrix, [0, 0, 0, 1]])
     return extrinsic_matrix, rvec, tvec
+

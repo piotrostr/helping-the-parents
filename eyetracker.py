@@ -2,9 +2,16 @@ import cv2
 import numpy as np
 import ffmpeg
 import torch
+import glob
 
 from eve import EVE
 from EVE.src.datasources.eve_sequences import EVESequencesBase
+from preprocess import (
+    calibrate, 
+    normalize, 
+    undistort_image, 
+    preprocess_frames
+)
 
 
 class EyeTracker:
@@ -15,49 +22,74 @@ class EyeTracker:
         else:
             self.device = torch.device("cpu")
         self.eve = EVE().to(self.device)
-        self.extractor = None
+        self.images = []
+        fa2d = face_alignment.FaceAlignment(face_alignment.LandmarksType._2D,
+                                            flip_input=False,
+                                            device=str(self.device),
+                                            face_detector='blazeface')
+        fa3d = face_alignment.FaceAlignment(face_alignment.LandmarksType._3D,
+                                            flip_input=False,
+                                            device=str(self.device),
+                                            face_detector='blazeface')
 
-    def create_inputs(self, face_vid, scene_vid, mouse_position) -> dict:
-        inputs = {}
-        cap = cv2.VideoCapture(path)
-        frames = np.array([])
-        timestamps = []
-        frame_count = 0
-        if cap.isOpened():
-            print('Parsing frames...')
-            while True:
-                timestamp = cap.get(cv2.CAP_PROP_POS_MSEC)
-                ret, frame = cap.read()
-                frame_count += 1
-                try:
-                    frame.shape
-                except:
-                    break
-                if not len(frames):
-                    frames = np.expand_dims(frame, axis=0)
-                else:
-                    if timestamp == 0.0:
-                        fps = cap.get(cv2.CAP_PROP_FPS)
-                        timestamp = (float(frame_count) / fps) * 1000.
-                    timestamps.append(timestamp)
-                    frame = np.expand_dims(frame, axis=0)
-                    frames = np.concatenate((frames, frame), axis=0)
-                print('.', end='')
-        else:
-            raise Exception('Capture could not be opened.')
-        print('\nDone!')
-        frames = self.preprocess_frames(frames)
-        alpha = 1780
-        _, n, c, h, w = frames.shape
-        single_camera_matrix = np.array([
-            [alpha, 0, w / 2], 
-            [0, alpha, h / 2], 
-            [0, 0, 1]
-        ])
-        camera_matrix = torch.Tensor([camera_matrix for i in range(n)])
-        camera_matrix = camera_matrix.type(torch.float32).unsqueeze(0)
-        timestamps = list(map(self.make_weird, timestamps))
-        return frames, timestamps
+    def load_images(self):
+        self.images = [cv2.imread(f) for f in glob.glob('./data/*.jpg')]
+        self.images = [cv2.resize(img, (1920, 1080)) for img in self.images]
+
+    def move_to_right_device(self, inp):
+        for k, v in inp.items():
+            inp[k] = v.to(self.device)
+
+    def create_inputs(self) -> dict:
+        i = {}
+        self.load_images()
+
+        ret, mtx, dist, rvecs, tvecs = calibrate(self.images)
+        
+        # todo automate the below for each frame
+
+        left_o, right_o = get_origin_of_gaze(preds_3d)
+        i['left_o'] = torch.Tensor([left_o]).unsqueeze(0)
+        i['left_o_validity'] = torch.Tensor([True]).unsqueeze(0)
+        i['right_o'] = torch.Tensor([right_o]).unsqueeze(0)
+        i['right_o_validity'] = torch.Tensor([True]).unsqueeze(0)
+
+        i['camera_transformation'] = torch.Tensor([ext_matrix]).unsqueeze(0)
+        inv = np.linalg.inv(extrinsic_matrix)   
+        i['inv_camera_transformation'] = torch.Tensor([inv]).unsqueeze(0)
+
+        i['left_R'] = torch.Tensor([left_R]).unsqueeze(0)
+
+        i['left_R_validity'] = torch.Tensor([True]).unsqueeze(0)
+
+        i['right_R'] = torch.Tensor([right_R]).unsqueeze(0)
+
+        i['right_R_validity'] = torch.Tensor([True]).unsqueeze(0)
+
+        i['head_R'] = torch.Tensor([head_R]).unsqueeze(0)
+
+        i['millimeters_per_pixel'] = inp['millimeters_per_pixel'][:, 0].unsqueeze(0)
+
+        i['pixels_per_millimeter'] = inp['pixels_per_millimeter'][:, 0].unsqueeze(0)
+
+
+        _left_eye_patch = preprocess_frames(np.expand_dims(left_eye_patch, axis=0))
+        i['left_eye_patch'] = torch.from_numpy(_left_eye_patch)
+
+        _right_eye_patch = preprocess_frames(np.expand_dims(right_eye_patch, axis=0))
+        i['right_eye_patch'] = torch.from_numpy(_right_eye_patch)
+
+        i['timestamps'] = torch.Tensor([925789010258708]).unsqueeze(0)
+
+        cap = cv2.VideoCapture('./data/scene.mp4')
+        ret, frame = cap.read()
+        screen_frame = cv2.resize(frame, dsize=(128, 72))
+
+        _screen_frame = preprocess_frames(np.expand_dims(screen_frame, axis=0))
+        i['screen_frame'] = torch.from_numpy(_screen_frame)
+
+        i['screen_timestamps'] = torch.Tensor([925789010258708]).unsqueeze(0)
+        return inputs
 
     def postprocess(self, x):
         stuff = None

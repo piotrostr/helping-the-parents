@@ -51,6 +51,9 @@ class EVE(nn.Module):
 
         self.eye_net = EyeNet()
         state_dict = torch.load('models/eve_eyenet_GRU.pt')
+        if not config.eye_net_use_head_pose_input:
+            weight = state_dict['fc_common.0.weight']
+            state_dict['fc_common.0.weight'] = weight[:, :128]
         self.eye_net.load_state_dict(state_dict)
 
         self.refine_net = RefineNet()
