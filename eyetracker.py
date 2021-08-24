@@ -3,6 +3,7 @@ import numpy as np
 import ffmpeg
 import torch
 import glob
+import pickle
 
 from torch import Tensor
 from scipy import io as sio
@@ -163,6 +164,8 @@ class EyeTracker:
 if __name__ == '__main__':
     eyetracker = EyeTracker()
     out = eyetracker.infer('./data/face.mp4', './data/scene.mp4')
+    with open('out.pkl', 'wb') as f:
+        pickle.dump(out, f)
     print(out['PoG_px_final'])
 
     """
