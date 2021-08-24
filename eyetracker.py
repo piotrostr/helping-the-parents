@@ -9,7 +9,6 @@ from torch import Tensor
 from scipy import io as sio
 from face_alignment import FaceAlignment, LandmarksType
 from eve import EVE
-from EVE.src.datasources.eve_sequences import EVESequencesBase
 from utils import true_tensor
 from preprocess import (
     calibrate, 

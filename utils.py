@@ -1,9 +1,9 @@
 import torch
 
-from EVE.src.datasources.eve_sequences import EVESequencesBase
 
 
 def get_sample_input():
+    from EVE.src.datasources.eve_sequences import EVESequencesBase
     dataset = EVESequencesBase(
         'sample/eve_dataset',
         participants_to_use=['train01']
