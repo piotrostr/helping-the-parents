@@ -21,15 +21,18 @@ def preprocess_frames(frames):
 
 
 def get_frames_and_timestamps(path):
+    # this could be rewritten slightly not to use concatenate
     cap = cv2.VideoCapture(path)
     frames = np.array([])
     timestamps = []
     frame_count = 0
     if cap.isOpened():
         print('Parsing frames...')
-        while True:
+        for i in range(150):
             timestamp = cap.get(cv2.CAP_PROP_POS_MSEC)
             ret, frame = cap.read()
+            if 'scene' in path:
+                frame = cv2.resize(frame, dsize=(128, 72))
             frame_count += 1
             try:
                 frame.shape
@@ -42,7 +45,10 @@ def get_frames_and_timestamps(path):
                     fps = cap.get(cv2.CAP_PROP_FPS)
                     timestamp = (float(frame_count) / fps) * 1000.
                 timestamps.append(timestamp)
-                frames = np.concatenate((frames, np.expand_dims(frame, axis=0)), axis=0)
+                _frame = np.expand_dims(frame, axis=0)
+                if 'scene' in path:
+                    _frame = cv2.resize(_frame, dsize=(128, 72))
+                frames = np.concatenate((frames, _frame), axis=0)
             print('.', end='')
     print('\nDone!')
     return frames, list(map(make_weird, timestamps))

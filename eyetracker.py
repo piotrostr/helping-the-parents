@@ -13,7 +13,8 @@ from preprocess import (
     normalize, 
     undistort_image, 
     preprocess_frames,
-    get_origin_of_gaze
+    get_origin_of_gaze,
+    get_frames_and_timestamps
 )
 
 
@@ -37,91 +38,114 @@ class EyeTracker:
                                   device=str(self.device),
                                   face_detector='blazeface')
         self.eve = EVE().to(self.device)
-
+        print('Models loaded.')
 
     def load_calibration_images(self):
         self.images = [cv2.imread(f) for f in glob.glob('./data/*.jpg')]
         self.images = [cv2.resize(img, (1920, 1080)) for img in self.images]
+        assert len(self.images)
+        print('Calibration images loaded.')
 
-    def move_to_right_device(self, inputs: dict):
-        for k, v in inputs.items():
-            inputs[k] = v.to(self.device)
+    def preprocess_inputs(self):
+        for k: str, v: Tensor in self.inputs.items():
+            self.inputs[k] = torch.stack(v).unsqueeze(0).to(self.device)
 
-    def create_inputs(self, face_path: str, scene_path: str) -> dict:
-        cap_face = cv2.VideoCapture(face_path)
-        ret, frame = cap.read()
-        cap_screen = cv2.VideoCapture(scene_path)
-        # todo go smart about stacking the below
-        inputs = {}
+    @staticmethod
+    def initialize_inputs(self):
+        self.inputs = {}
+        self.inputs['millimeters_per_pixel'] = []
+        self.inputs['pixels_per_millimeter'] = []
+        self.inputs['camera_transformation'] = []
+        self.inputs['inv_camera_transformation'] = []
+        self.inputs['left_o'] = []
+        self.inputs['left_o_validity'] = []
+        self.inputs['right_o'] = []
+        self.inputs['right_o_validity'] = []
+        self.inputs['left_R'] = []
+        self.inputs['left_R_validity'] = []
+        self.inputs['right_R'] = []
+        self.inputs['right_R_validity'] = []
+        self.inputs['head_R'] = []
+        self.inputs['right_eye_patch'] = []
+        self.inputs['timestamps'] = []
+        self.inputs['right_eye_patch'] = []
+        self.inputs['timestamps'] = []
+        self.inputs['screen_frame'] = []
+        self.inputs['screen_timestamps'] = []
+        print('Input dict initialized.')
+
+
+    def fill_inputs(self, face: str, scene: str) -> dict:
+        """
+        :params face scene: 
+            paths to captured videos of resp. webcam and screen
+        :returns: 
+            inputs dict ready to be fed straight into EVE
+        """
         ret, mtx, dist, rvecs, tvecs = calibrate(self.images)
-        
-        # constant across frames
+
+        face_frames, timestamps = get_frames_and_timestamps(face)
+        screen_frames, screen_timestamps = get_frames_and_timestamps(scene)
+
         mm_per_px = [0.2880, 0.2880]
         px_per_mm = [3.4720, 3.4727]
-        inputs['millimeters_per_pixel'] = Tensor([mm_per_px]).unsqueeze(0)
-        inputs['pixels_per_millimeter'] = Tensor([px_per_mm]).unsqueeze(0)
-
-        # unique for each frame: 
-        [preds] = self.fa2d.get_landmarks(img)
-        [preds_3d] = self.fa3d.get_landmarks(img)
-        landmarks = [
-            preds[36], preds[39],  # left eye corners
-            preds[42], preds[45],  # right eye corners
-            preds[48], preds[54]   # mouth corners
-        ]
         face = sio.loadmat('./faceModelGeneric.mat')['model']
         face_pts = face.T.reshape(face.shape[1], 1, 3)
-        ret, rvec, tvec = cv2.solvePnP(face_pts, 
-                                       np.array(landmarks),
-                                       mtx, 
-                                       dist,
-                                       flags=cv2.SOLVEPNP_SQPNP)
-        rotation_m, _ = cv2.Rodrigues(rvec)
-        ext_mtx = np.hstack([rotation_m, tvec])
-        ext_mtx = np.vstack([ext_mtx, [0, 0, 0, 1]])
-        inputs['camera_transformation'] = Tensor([ext_mtx]).unsqueeze(0)
-        inv = np.linalg.inv(ext_mtx)   
-        inputs['inv_camera_transformation'] = Tensor([inv]).unsqueeze(0)
 
-        gc = np.array([-127.79, 4.62, -12.02])  # 3D gaze taraget position
-        head_R, [ 
-            [left_eye_patch, _, _, left_R, left_W],
-            [right_eye_patch, _, _, right_R, right_W]
-        ] = head_R, data = normalize(img, mtx, dist, landmarks, gc)
-        left_o, right_o = get_origin_of_gaze(preds_3d)
-        inputs['left_o'] = Tensor([left_o]).unsqueeze(0)
-        inputs['left_o_validity'] = Tensor([True]).unsqueeze(0)
-        inputs['right_o'] = Tensor([right_o]).unsqueeze(0)
-        inputs['right_o_validity'] = Tensor([True]).unsqueeze(0)
+        self.inputs['timestamps'] = timestamps
+        self.inputs['screen_timestamps'] = screen_timestamps
 
-        inputs['left_R'] = Tensor([left_R]).unsqueeze(0)
-        inputs['left_R_validity'] = Tensor([True]).unsqueeze(0)
-        inputs['right_R'] = Tensor([right_R]).unsqueeze(0)
-        inputs['right_R_validity'] = Tensor([True]).unsqueeze(0)
-        inputs['head_R'] = Tensor([head_R]).unsqueeze(0)
+        for face_frame, screen_frame in zip(face_frames, screen_frames):
+            face_frame = cv2.resize(face_frame, (1920, 1080))
+            [preds] = self.fa2d.get_landmarks(face_frame)
+            [preds_3d] = self.fa3d.get_landmarks(face_frame)
+            landmarks = [
+                preds[36], preds[39],  # left eye corners
+                preds[42], preds[45],  # right eye corners
+                preds[48], preds[54]   # mouth corners
+            ]
+            ret, rvec, tvec = cv2.solvePnP(face_pts, 
+                                           np.array(landmarks),
+                                           mtx, 
+                                           dist,
+                                           flags=cv2.SOLVEPNP_SQPNP)
+            rotation_m, _ = cv2.Rodrigues(rvec)
+            ext_mtx = np.hstack([rotation_m, tvec])
+            ext_mtx = np.vstack([ext_mtx, [0, 0, 0, 1]])
+            self.inputs['camera_transformation'].append(Tensor(ext_mtx))
+            inv = np.linalg.inv(ext_mtx)   
+            self.inputs['inv_camera_transformation'].append(Tensor(inv))
 
-        t0 = 925789010258708
-        _left_eye_patch = np.expand_dims(left_eye_patch, axis=0)
-        _left_eye_patch = preprocess_frames(_left_eye_patch)
-        inputs['right_eye_patch'] = Tensor(_left_eye_patch)
-        inputs['timestamps'] = Tensor([t0]).unsqueeze(0)
+            gc = np.array([-127.79, 4.62, -12.02])  # 3D gaze target position
+            head_R, dat = normalize(face_frame, mtx, dist, landmarks, gc)
+            left_eye, right_eye = dat
+            left_eye_patch, _, _, left_R, left_W = left_eye
+            right_eye_patch, _, _, right_R, right_W = right_eye
+            left_o, right_o = get_origin_of_gaze(preds_3d)
+            self.inputs['left_o'].append(Tensor(left_o))
+            self.inputs['left_o_validity'].append(Tensor(True))
+            self.inputs['right_o'].append(Tensor(True))
+            self.inputs['right_o_validity'].append(Tensor(True))
 
-        _right_eye_patch = np.expand_dims(right_eye_patch, axis=0)
-        _right_eye_patch = preprocess_frames(_right_eye_patch)
-        inputs['right_eye_patch'] = Tensor(_right_eye_patch)
-        inputs['timestamps'] = Tensor([t0]).unsqueeze(0)
+            self.inputs['left_R'].append(Tensor(left_R))
+            self.inputs['left_R_validity'].append(Tensor(True))
+            self.inputs['right_R'].append(Tensor(right_R))
+            self.inputs['right_R_validity'].append(Tensor(True))
+            self.inputs['head_R'].append(Tensor(head_R))
 
-        _screen_frame = cv2.resize(screen_frame, dsize=(128, 72))
-        _screen_frame = np.expand_dims(screen_frame, axis=0)
-        _screen_frame = preprocess_frames(_screen_frame)
-        inputs['screen_frame'] = Tensor(_screen_frame)
-        inputs['screen_timestamps'] = Tensor([t0]).unsqueeze(0)
-
-        return self.move_to_right_device(inputs)
+            self.inputs['left_eye_patch'].append(Tensor(left_eye_patch))
+            self.inputs['right_eye_patch'].append(Tensor(right_eye_patch))
+            self.inputs['screen_frame'].append(Tensor(screen_frame))
 
     def postprocess(self, x):
-        stuff = None
-        return stuff
+        return x
+    
+    def infer(self, face_path: str, scene_path: str):
+        self.initialize_inputs()
+        self.fill_inputs(face_path, scene_path)
+        self.preprocess_inputs()
+        out = self.eve(self.inputs)
+        return self.postprocess(out)
 
 
 if __name__ == '__main__':
