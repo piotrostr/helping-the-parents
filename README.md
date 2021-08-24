@@ -13,6 +13,14 @@ This project's aim is to create an easy-to-use eye-tracking software based on th
 
 The main goals of the project are to deliver an efficient pipeline for camera calibration (both intrinsic and extrinsic) as well as real-time eye patch extraction.
 
+### Set-up
+
+```pip install -r requirements.txt``` but be sure to ```git-lfs pull``` as well to get the sample data and models pulled
+
+Place the calibration images with chessboards from a variety of angles into ```./data```. Ideally it should be around 10 photos, with all the squares of the chessboard visible among all the images. Then place ```scene.mp4``` capture of screen and ```face.mp4``` capture of webcam into ```./data```. 
+
+The angle at which the webcam is recording has to be the same as for the images being calibrated!
+
 ### Preprocessing steps:
 
 1) intrinsic matrix calibration using opencv and ChArUco board [5]
