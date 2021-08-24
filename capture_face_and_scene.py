@@ -31,7 +31,7 @@ def show_frame(frame):
 
 
 def main():
-    fourcc = cv2.VideoWriter_fourcc(*'MP4V')
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     m = mss()
     cap = cv2.VideoCapture(0)
 
