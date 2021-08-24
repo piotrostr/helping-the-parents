@@ -12,4 +12,7 @@ segmentation_cache
 models/tinaface_r50_fpn_gn_dcn.pth
 vedadet
 BlazeFace-PyTorch
+chessboards
+my_chessboards
+my_faces
 
