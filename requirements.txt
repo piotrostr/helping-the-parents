@@ -1,6 +1,6 @@
 h5py===2.10.0
 ffmpeg_python===0.2.0
-opencv_python===4.2.0.34
+opencv_python
 tensorboardX===2.0
 coloredlogs===14.0
 gspread===3.6.0
