@@ -33,3 +33,6 @@ def list_keys(inp):
         except:
             print(inp[k])
 
+def true_tensor(n):
+    return torch.Tensor([True for i in range(n)]).type(torch.bool)
+

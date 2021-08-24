@@ -5,9 +5,11 @@ import torch
 import glob
 
 from torch import Tensor
+from scipy import io as sio
 from face_alignment import FaceAlignment, LandmarksType
 from eve import EVE
 from EVE.src.datasources.eve_sequences import EVESequencesBase
+from utils import true_tensor
 from preprocess import (
     calibrate, 
     normalize, 
@@ -47,10 +49,19 @@ class EyeTracker:
         print('Calibration images loaded.')
 
     def preprocess_inputs(self):
-        for k: str, v: Tensor in self.inputs.items():
+        for k, v in self.inputs.items():
+            if 'validity' in k or 'timestamps' in k:
+                self.inputs[k] = v.unsqueeze(0).to(self.device)
+                continue
+            if 'patch' in k or 'frame' in k:
+                frames = np.stack(v)
+                frames = preprocess_frames(frames)
+                frames = Tensor(frames).to(self.device)
+                self.inputs[k] = frames
+                continue
             self.inputs[k] = torch.stack(v).unsqueeze(0).to(self.device)
+        print('Inputs preprocessed.')
 
-    @staticmethod
     def initialize_inputs(self):
         self.inputs = {}
         self.inputs['millimeters_per_pixel'] = []
@@ -66,14 +77,12 @@ class EyeTracker:
         self.inputs['right_R'] = []
         self.inputs['right_R_validity'] = []
         self.inputs['head_R'] = []
-        self.inputs['right_eye_patch'] = []
-        self.inputs['timestamps'] = []
+        self.inputs['left_eye_patch'] = []
         self.inputs['right_eye_patch'] = []
         self.inputs['timestamps'] = []
         self.inputs['screen_frame'] = []
         self.inputs['screen_timestamps'] = []
         print('Input dict initialized.')
-
 
     def fill_inputs(self, face: str, scene: str) -> dict:
         """
@@ -86,14 +95,21 @@ class EyeTracker:
 
         face_frames, timestamps = get_frames_and_timestamps(face)
         screen_frames, screen_timestamps = get_frames_and_timestamps(scene)
+        n, h, w, c = face_frames.shape
 
-        mm_per_px = [0.2880, 0.2880]
-        px_per_mm = [3.4720, 3.4727]
+        self.inputs['timestamps'] = Tensor(timestamps)
+        self.inputs['screen_timestamps'] = Tensor(screen_timestamps)
+        self.inputs['millimeters_per_pixel'] = [Tensor([0.2880, 0.2880])
+                                                for i in range(n)]
+        self.inputs['pixels_per_millimeter'] = [Tensor([3.4720, 3.4727])
+                                                for i in range(n)]
+        self.inputs['left_o_validity'] = true_tensor(n) 
+        self.inputs['right_o_validity'] = true_tensor(n)
+        self.inputs['left_R_validity'] = true_tensor(n)
+        self.inputs['right_R_validity'] = true_tensor(n)
+
         face = sio.loadmat('./faceModelGeneric.mat')['model']
         face_pts = face.T.reshape(face.shape[1], 1, 3)
-
-        self.inputs['timestamps'] = timestamps
-        self.inputs['screen_timestamps'] = screen_timestamps
 
         for face_frame, screen_frame in zip(face_frames, screen_frames):
             face_frame = cv2.resize(face_frame, (1920, 1080))
@@ -112,9 +128,7 @@ class EyeTracker:
             rotation_m, _ = cv2.Rodrigues(rvec)
             ext_mtx = np.hstack([rotation_m, tvec])
             ext_mtx = np.vstack([ext_mtx, [0, 0, 0, 1]])
-            self.inputs['camera_transformation'].append(Tensor(ext_mtx))
             inv = np.linalg.inv(ext_mtx)   
-            self.inputs['inv_camera_transformation'].append(Tensor(inv))
 
             gc = np.array([-127.79, 4.62, -12.02])  # 3D gaze target position
             head_R, dat = normalize(face_frame, mtx, dist, landmarks, gc)
@@ -122,20 +136,18 @@ class EyeTracker:
             left_eye_patch, _, _, left_R, left_W = left_eye
             right_eye_patch, _, _, right_R, right_W = right_eye
             left_o, right_o = get_origin_of_gaze(preds_3d)
+
+            self.inputs['camera_transformation'].append(Tensor(ext_mtx))
+            self.inputs['inv_camera_transformation'].append(Tensor(inv))
             self.inputs['left_o'].append(Tensor(left_o))
-            self.inputs['left_o_validity'].append(Tensor(True))
-            self.inputs['right_o'].append(Tensor(True))
-            self.inputs['right_o_validity'].append(Tensor(True))
-
+            self.inputs['right_o'].append(Tensor(right_o))
             self.inputs['left_R'].append(Tensor(left_R))
-            self.inputs['left_R_validity'].append(Tensor(True))
             self.inputs['right_R'].append(Tensor(right_R))
-            self.inputs['right_R_validity'].append(Tensor(True))
             self.inputs['head_R'].append(Tensor(head_R))
-
-            self.inputs['left_eye_patch'].append(Tensor(left_eye_patch))
-            self.inputs['right_eye_patch'].append(Tensor(right_eye_patch))
+            self.inputs['left_eye_patch'].append(left_eye_patch)
+            self.inputs['right_eye_patch'].append(right_eye_patch)
             self.inputs['screen_frame'].append(Tensor(screen_frame))
+        print(f'Input dict filled with data from {n} frames.')
 
     def postprocess(self, x):
         return x
@@ -150,7 +162,8 @@ class EyeTracker:
 
 if __name__ == '__main__':
     eyetracker = EyeTracker()
-
+    out = eyetracker.infer('./data/face.mp4', './data/scene.mp4')
+    print(out['PoG_px_final'])
 
     """
     !!! preprocessing steps:

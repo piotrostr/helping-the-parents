@@ -20,38 +20,51 @@ def preprocess_frames(frames):
     return frames
 
 
+def get_origin_of_gaze(preds_3d):
+    """
+    :param preds: 3d landmarks predictions
+    """
+    preds = np.array(preds_3d)
+    left_coords = preds[slice(36, 42)]
+    right_coords = preds[slice(42, 48)]
+    left_o = [
+        left_coords[:, 0].mean(), 
+        left_coords[:, 1].mean(),
+        left_coords[:, 2].mean()
+    ]
+    right_o = [
+        right_coords[:, 0].mean(), 
+        right_coords[:, 1].mean(),
+        right_coords[:, 2].mean()
+    ]
+    return left_o, right_o
+
+
 def get_frames_and_timestamps(path):
-    # this could be rewritten slightly not to use concatenate
     cap = cv2.VideoCapture(path)
-    frames = np.array([])
+    frames = []
     timestamps = []
     frame_count = 0
     if cap.isOpened():
-        print('Parsing frames...')
-        for i in range(150):
+        print(f'Parsing frames from {path}...')
+        for i in range(1000):
             timestamp = cap.get(cv2.CAP_PROP_POS_MSEC)
             ret, frame = cap.read()
-            if 'scene' in path:
-                frame = cv2.resize(frame, dsize=(128, 72))
             frame_count += 1
             try:
                 frame.shape
             except:
                 break
-            if not len(frames):
-                frames = np.expand_dims(frame, axis=0)
-            else:
-                if timestamp == 0.0:
-                    fps = cap.get(cv2.CAP_PROP_FPS)
-                    timestamp = (float(frame_count) / fps) * 1000.
-                timestamps.append(timestamp)
-                _frame = np.expand_dims(frame, axis=0)
-                if 'scene' in path:
-                    _frame = cv2.resize(_frame, dsize=(128, 72))
-                frames = np.concatenate((frames, _frame), axis=0)
+            if timestamp == 0.0:
+                fps = cap.get(cv2.CAP_PROP_FPS)
+                timestamp = (float(frame_count) / fps) * 1000.
+            timestamps.append(timestamp)
+            if 'scene' in path:
+                frame = cv2.resize(frame, dsize=(128, 72))
+            frames.append(frame)
             print('.', end='')
-    print('\nDone!')
-    return frames, list(map(make_weird, timestamps))
+        print('\nDone!')
+    return np.stack(frames), [make_weird(t) for t in timestamps]
 
 
 def normalize(img, mtx, dist, landmarks, gc):
