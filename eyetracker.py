@@ -4,13 +4,16 @@ import ffmpeg
 import torch
 import glob
 
+from torch import Tensor
+from face_alignment import FaceAlignment, LandmarksType
 from eve import EVE
 from EVE.src.datasources.eve_sequences import EVESequencesBase
 from preprocess import (
     calibrate, 
     normalize, 
     undistort_image, 
-    preprocess_frames
+    preprocess_frames,
+    get_origin_of_gaze
 )
 
 
@@ -21,109 +24,108 @@ class EyeTracker:
             self.device = torch.device("cuda:0")
         else:
             self.device = torch.device("cpu")
+        self.load_models()
+        self.load_calibration_images()
+        
+    def load_models(self):
+        self.fa2d = FaceAlignment(LandmarksType._2D,
+                                  flip_input=False,
+                                  device=str(self.device),
+                                  face_detector='blazeface')
+        self.fa3d = FaceAlignment(LandmarksType._3D,
+                                  flip_input=False,
+                                  device=str(self.device),
+                                  face_detector='blazeface')
         self.eve = EVE().to(self.device)
-        self.images = []
-        fa2d = face_alignment.FaceAlignment(face_alignment.LandmarksType._2D,
-                                            flip_input=False,
-                                            device=str(self.device),
-                                            face_detector='blazeface')
-        fa3d = face_alignment.FaceAlignment(face_alignment.LandmarksType._3D,
-                                            flip_input=False,
-                                            device=str(self.device),
-                                            face_detector='blazeface')
 
-    def load_images(self):
+
+    def load_calibration_images(self):
         self.images = [cv2.imread(f) for f in glob.glob('./data/*.jpg')]
         self.images = [cv2.resize(img, (1920, 1080)) for img in self.images]
 
-    def move_to_right_device(self, inp):
-        for k, v in inp.items():
-            inp[k] = v.to(self.device)
+    def move_to_right_device(self, inputs: dict):
+        for k, v in inputs.items():
+            inputs[k] = v.to(self.device)
 
-    def create_inputs(self) -> dict:
-        i = {}
-        self.load_images()
-
+    def create_inputs(self, face_path: str, scene_path: str) -> dict:
+        cap_face = cv2.VideoCapture(face_path)
+        ret, frame = cap.read()
+        cap_screen = cv2.VideoCapture(scene_path)
+        # todo go smart about stacking the below
+        inputs = {}
         ret, mtx, dist, rvecs, tvecs = calibrate(self.images)
         
-        # todo automate the below for each frame
+        # constant across frames
+        mm_per_px = [0.2880, 0.2880]
+        px_per_mm = [3.4720, 3.4727]
+        inputs['millimeters_per_pixel'] = Tensor([mm_per_px]).unsqueeze(0)
+        inputs['pixels_per_millimeter'] = Tensor([px_per_mm]).unsqueeze(0)
 
+        # unique for each frame: 
+        [preds] = self.fa2d.get_landmarks(img)
+        [preds_3d] = self.fa3d.get_landmarks(img)
+        landmarks = [
+            preds[36], preds[39],  # left eye corners
+            preds[42], preds[45],  # right eye corners
+            preds[48], preds[54]   # mouth corners
+        ]
+        face = sio.loadmat('./faceModelGeneric.mat')['model']
+        face_pts = face.T.reshape(face.shape[1], 1, 3)
+        ret, rvec, tvec = cv2.solvePnP(face_pts, 
+                                       np.array(landmarks),
+                                       mtx, 
+                                       dist,
+                                       flags=cv2.SOLVEPNP_SQPNP)
+        rotation_m, _ = cv2.Rodrigues(rvec)
+        ext_mtx = np.hstack([rotation_m, tvec])
+        ext_mtx = np.vstack([ext_mtx, [0, 0, 0, 1]])
+        inputs['camera_transformation'] = Tensor([ext_mtx]).unsqueeze(0)
+        inv = np.linalg.inv(ext_mtx)   
+        inputs['inv_camera_transformation'] = Tensor([inv]).unsqueeze(0)
+
+        gc = np.array([-127.79, 4.62, -12.02])  # 3D gaze taraget position
+        head_R, [ 
+            [left_eye_patch, _, _, left_R, left_W],
+            [right_eye_patch, _, _, right_R, right_W]
+        ] = head_R, data = normalize(img, mtx, dist, landmarks, gc)
         left_o, right_o = get_origin_of_gaze(preds_3d)
-        i['left_o'] = torch.Tensor([left_o]).unsqueeze(0)
-        i['left_o_validity'] = torch.Tensor([True]).unsqueeze(0)
-        i['right_o'] = torch.Tensor([right_o]).unsqueeze(0)
-        i['right_o_validity'] = torch.Tensor([True]).unsqueeze(0)
+        inputs['left_o'] = Tensor([left_o]).unsqueeze(0)
+        inputs['left_o_validity'] = Tensor([True]).unsqueeze(0)
+        inputs['right_o'] = Tensor([right_o]).unsqueeze(0)
+        inputs['right_o_validity'] = Tensor([True]).unsqueeze(0)
 
-        i['camera_transformation'] = torch.Tensor([ext_matrix]).unsqueeze(0)
-        inv = np.linalg.inv(extrinsic_matrix)   
-        i['inv_camera_transformation'] = torch.Tensor([inv]).unsqueeze(0)
+        inputs['left_R'] = Tensor([left_R]).unsqueeze(0)
+        inputs['left_R_validity'] = Tensor([True]).unsqueeze(0)
+        inputs['right_R'] = Tensor([right_R]).unsqueeze(0)
+        inputs['right_R_validity'] = Tensor([True]).unsqueeze(0)
+        inputs['head_R'] = Tensor([head_R]).unsqueeze(0)
 
-        i['left_R'] = torch.Tensor([left_R]).unsqueeze(0)
+        t0 = 925789010258708
+        _left_eye_patch = np.expand_dims(left_eye_patch, axis=0)
+        _left_eye_patch = preprocess_frames(_left_eye_patch)
+        inputs['right_eye_patch'] = Tensor(_left_eye_patch)
+        inputs['timestamps'] = Tensor([t0]).unsqueeze(0)
 
-        i['left_R_validity'] = torch.Tensor([True]).unsqueeze(0)
+        _right_eye_patch = np.expand_dims(right_eye_patch, axis=0)
+        _right_eye_patch = preprocess_frames(_right_eye_patch)
+        inputs['right_eye_patch'] = Tensor(_right_eye_patch)
+        inputs['timestamps'] = Tensor([t0]).unsqueeze(0)
 
-        i['right_R'] = torch.Tensor([right_R]).unsqueeze(0)
+        _screen_frame = cv2.resize(screen_frame, dsize=(128, 72))
+        _screen_frame = np.expand_dims(screen_frame, axis=0)
+        _screen_frame = preprocess_frames(_screen_frame)
+        inputs['screen_frame'] = Tensor(_screen_frame)
+        inputs['screen_timestamps'] = Tensor([t0]).unsqueeze(0)
 
-        i['right_R_validity'] = torch.Tensor([True]).unsqueeze(0)
-
-        i['head_R'] = torch.Tensor([head_R]).unsqueeze(0)
-
-        i['millimeters_per_pixel'] = inp['millimeters_per_pixel'][:, 0].unsqueeze(0)
-
-        i['pixels_per_millimeter'] = inp['pixels_per_millimeter'][:, 0].unsqueeze(0)
-
-
-        _left_eye_patch = preprocess_frames(np.expand_dims(left_eye_patch, axis=0))
-        i['left_eye_patch'] = torch.from_numpy(_left_eye_patch)
-
-        _right_eye_patch = preprocess_frames(np.expand_dims(right_eye_patch, axis=0))
-        i['right_eye_patch'] = torch.from_numpy(_right_eye_patch)
-
-        i['timestamps'] = torch.Tensor([925789010258708]).unsqueeze(0)
-
-        cap = cv2.VideoCapture('./data/scene.mp4')
-        ret, frame = cap.read()
-        screen_frame = cv2.resize(frame, dsize=(128, 72))
-
-        _screen_frame = preprocess_frames(np.expand_dims(screen_frame, axis=0))
-        i['screen_frame'] = torch.from_numpy(_screen_frame)
-
-        i['screen_timestamps'] = torch.Tensor([925789010258708]).unsqueeze(0)
-        return inputs
+        return self.move_to_right_device(inputs)
 
     def postprocess(self, x):
         stuff = None
         return stuff
-    
-    @statimethod
-    def preprocess_frames(frames):
-        # Expected input:  N x H x W x C
-        # Expected output: N x C x H x W
-        frames = np.transpose(frames, [0, 3, 1, 2])
-        frames = frames.astype(np.float32)
-        frames *= 2.0 / 255.0
-        frames -= 1.0
-        frames = np.expand_dims(frames, axis=0)
-        return frames
 
-    @staticmethod
-    def make_weird(x):
-        try:
-            return (float(x) / 1e-6) + 9.257890218838680000e+14
-        except:
-            return x
 
 if __name__ == '__main__':
-    dataset = EVESequencesBase(
-        'sample/eve_dataset',
-        participants_to_use=['train01']
-    )
-    dataloader = torch.utils.data.DataLoader(dataset)
-    
     eyetracker = EyeTracker()
-    
-    inp = next(iter(dataloader))
-    out = eve(inp)
 
 
     """
