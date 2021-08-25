@@ -33,6 +33,17 @@ def list_keys(inp):
         except:
             print(inp[k])
 
+
 def true_tensor(n):
     return torch.Tensor([True for i in range(n)]).type(torch.bool)
+
+
+def save_heatmap_plot(out):
+    assert 'final_heatmap' in out.keys()
+    heatmap = out['final_heatmap']
+    heatmap = heatmap.squeeze(0).transpose(1, 2).transpose(0, 2) * 255
+    heatmap = heatmap.numpy().astype(int)
+    path = 'heatmap.jpg'
+    cv2.imwrite(path, heatmap)
+    print(f'Saved {path}')
 
