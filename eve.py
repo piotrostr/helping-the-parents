@@ -62,7 +62,7 @@ class EVE(nn.Module):
 
     def forward(self, 
                 full_input_dict, 
-                create_images=False, 
+                create_images=True, 
                 current_epoch=1.):
         # There are some labels that we need to calculate ourselves
         self.calculate_additional_labels(full_input_dict, current_epoch=current_epoch)

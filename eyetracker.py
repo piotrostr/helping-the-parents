@@ -163,6 +163,8 @@ class EyeTracker:
 if __name__ == '__main__':
     eyetracker = EyeTracker()
     out = eyetracker.infer('./data/face.mp4', './data/scene.mp4')
+    for k, v in out.items():
+        out[k] = v.detach().cpu()
     with open('out.pkl', 'wb') as f:
         pickle.dump(out, f)
     print(out['PoG_px_final'])
