@@ -24,15 +24,14 @@ The angle at which the webcam is recording has to be the same as for the images 
 ### Preprocessing steps:
 
 1) intrinsic matrix calibration using opencv and ChArUco board [5]
-2) extrinsic camera calibration using mirrors [1]
+2) extrinsic camera calibration using mirrors [1] !
 3) undistort the frames
-4) detect face 
+4) detect face (skip this as blazeface does it well)
 5) detect face-region landmarks (use face_alignment and blazeface)
-6) perform 3D morphable model (3DMM) to 3D landmarks [2]
+6) perform 3D morphable model (3DMM) to 3D landmarks [2] !
 7) apply 'data normalization' for yielding eye patches [3, 4] under assumptions:
     - virtual camera is located 60cm away from the gaze origin
-    - focal length of 1800mm
-
+    - focal length of ~1800mm
 
 [1] https://www.jstage.jst.go.jp/article/ipsjtcva/8/0/8_11/_pdf/-char/en
 
