@@ -89,12 +89,29 @@ def calibrate(images):
     imgpoints = []
     for img in images:
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        ret, corners = cv2.findChessboardCorners(gray, (7,6), None)
-        if ret == True:
+        ret, corners = cv2.findChessboardCorners(gray, (7, 6), None)
+        if ret:
+            cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
             objpoints.append(objp)
             imgpoints.append(corners)
     w, h = gray.shape[::-1]
-    return cv2.calibrateCamera(objpoints, imgpoints, (w, h), None, None)
+    error = 0.0
+    ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, 
+                                                       imgpoints, 
+                                                       (w, h), 
+                                                       None, 
+                                                       None)
+    for i in range(len(objpoints)):
+        proj_imgpoints, _ = cv2.projectPoints(objpoints[i],
+                                              rvecs[i], 
+                                              tvecs[i],
+                                              mtx, 
+                                              dist)
+        err = cv2.norm(imgpoints[i], proj_imgpoints, cv2.NORM_L2)
+        error += err / len(proj_imgpoints)
+    error /= len(objpoints)
+    print(f'Camera calibrated successfully, re-projection error: {error:2f}')
+    return ret, mtx, dist, rvecs, tvecs
 
 
 def undistort_image(img, mtx, dist):
