@@ -9,4 +9,5 @@ numpy===1.18.4
 torch===1.5.1
 torchvision===0.6.1
 face_alignment
+eos-py
 
