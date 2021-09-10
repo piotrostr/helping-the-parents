@@ -4,7 +4,6 @@ import matplotlib.pyplot as plt
 import scipy.io as sio
 
 from utils import make_weird
-from normalize_data import estimateHeadPose, normalizeData
 
 
 def preprocess_frames(frames):
@@ -114,20 +113,16 @@ def calibrate(images):
     return ret, mtx, dist, rvecs, tvecs
 
 
-def undistort_image(img, mtx, dist):
-    plt.imshow(img)
-    plt.show()
-    h, w = img.shape[:2]
-    params = [mtx, dist, (w, h), 1, (w, h)]
-    newcameramtx, roi = cv2.getOptimalNewCameraMatrix(*params)
-    dst = cv2.undistort(img, mtx, dist, None, newcameramtx)
-    x, y, w, h = roi
-    plt.imshow(dst)
-    plt.show()
-    undistorted = dst[y:y+h, x:x+w]
-    plt.imshow(undistorted)
-    plt.show()
-    return undistorted
+def undistort(frame, camera_matrix, distortion, input_w, input_h):
+    maps = cv2.initUndistortRectifyMap(
+        camera_matrix,
+        distortion,
+        R=None,
+        newCameraMatrix=camera_matrix,   
+        size=(input_w, input_h),
+        m1type=cv2.CV_32FC1,
+    )
+    return cv2.remap(frame, maps[0], maps[1], cv2.INTER_LINEAR)
 
 
 def solve_extrinsic_matrix(corners_world, corners_image, intrinsic_matrix, distortion):
