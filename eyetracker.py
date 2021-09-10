@@ -97,11 +97,18 @@ class EyeTracker:
         decay_per_ms = 0.95
 
         # TODO get those params
-        screen_w = 1920
-        screen_h = 1080
-        ppm = 8.93  # 227 px per inch
-        mpp = 1 / ppm  
-            self.inputs['facial_landmarks'].append(Tensor(landmarks_2d))
+        input_w = 1920
+        input_h = 1080
+        # those have to be deduced, 
+        # based on that screen is not 2560x1600 227px/inch
+        # but 1920x1080 ?px/inch
+        screen_width_mm = 304.1  # 11.97 inches
+        screen_height_mm = 212.3 # 8.36 inches
+
+        ppm_w = input_w / screen_width_mm 
+        ppm_h = input_h / screen_height_mm
+        mpp_w = 1 / ppm_w
+        mpp_h = 1 / ppm_h
 
         ret, mtx, dist, rvecs, tvecs = calibrate(self.images)
 
@@ -111,17 +118,14 @@ class EyeTracker:
 
         self.inputs['timestamps'] = Tensor(timestamps)
         self.inputs['screen_timestamps'] = Tensor(screen_timestamps)
-        self.inputs['millimeters_per_pixel'] = [Tensor([0.2880, 0.2880])
+        self.inputs['millimeters_per_pixel'] = [Tensor([mpp_w, mpp_h])
                                                 for i in range(n)]
-        self.inputs['pixels_per_millimeter'] = [Tensor([3.4720, 3.4727])
+        self.inputs['pixels_per_millimeter'] = [Tensor([ppm_w, ppm_h])
                                                 for i in range(n)]
         self.inputs['left_o_validity'] = true_tensor(n) 
         self.inputs['right_o_validity'] = true_tensor(n)
         self.inputs['left_R_validity'] = true_tensor(n)
         self.inputs['right_R_validity'] = true_tensor(n)
-
-        face = sio.loadmat('./faceModelGeneric.mat')['model']
-        face_pts = face.T.reshape(face.shape[1], 1, 3)
 
         for face_frame, screen_frame in zip(face_frames, screen_frames):
             face_frame = cv2.resize(face_frame, (1920, 1080))
@@ -135,10 +139,27 @@ class EyeTracker:
             frame = undistort(frame, camera_matrix, distortion, input_w, input_h)
 
             # get transf and inverse transf from extrinsincs
-            # TODO
+            t_x = (screen_width_mm / 2) * ppm_w  # exactly in the center
+            t_y = 5 * ppm_h  # half a centimeter
+            camera_transformation = ext_mtx = [
+                [-1, 0, 0, -t_x],
+                [0, 1, 0, t_y],
+                [0, 0, -1, 0],
+                [0, 0, 0, 1]
+            ]
+            inv_camera_transformation = inv = np.linalg.inv(ext_mtx)
+            """
+            Then, it should be possible to define the data field
+            "camera_transformation" (from camera-perspective to screen-space),
+            for example, as:
+            where t_x is the horizontal offset (in mm) between camera-center and top-left screen-corner,
+            and t_y is the vertical offset (in mm) between camera-center and top-left screen-corner,
+            based on Fig. 2.1 (page 14) of my doctoral dissertation (see attached PDF),
+            then apply a further scaling (multiply by pixels-per-millimeter) to arrive at the screen position in pixels.
+            """
 
             # detect face and landmarks
-            [landmarks_3d] = fa.get_landmarks(frame)
+            [landmarks_3d] = self.fa.get_landmarks(frame)
             landmarks_2d = landmarks_3d[:, :2]
 
             # smooth landmarks with ema
@@ -161,30 +182,27 @@ class EyeTracker:
             right = normalize(frame, camera_matrix, head_pose, o_r)
             right_eye_patch, right_head, right_R, right_W = right
 
-            face = normalize(frame, camera_matrix, head_pose, o_f, is_face=True)
-            face_patch, face_head, face_R, face_W  = face
-
             self.inputs['camera_transformation'].append(Tensor(ext_mtx))
             self.inputs['inv_camera_transformation'].append(Tensor(inv))
-            self.inputs['left_o'].append(Tensor(left_o))
-            self.inputs['right_o'].append(Tensor(right_o))
-            self.inputs['left_R'].append(Tensor(left_R))
-            self.inputs['right_R'].append(Tensor(right_R))
-            self.inputs['head_R'].append(Tensor(head_R))
             self.inputs['left_eye_patch'].append(left_eye_patch)
+            self.inputs['left_h'].append(Tensor(left_head))
+            self.inputs['left_o'].append(Tensor(o_l))
+            self.inputs['left_R'].append(Tensor(left_R))
+            self.inputs['left_W'].append(Tensor(left_W))
             self.inputs['right_eye_patch'].append(right_eye_patch)
+            self.inputs['right_h'].append(Tensor(right_head))
+            self.inputs['right_o'].append(Tensor(o_r))
+            self.inputs['right_R'].append(Tensor(right_R))
+            self.inputs['right_W'].append(Tensor(right_W))
+            self.inputs['head_R'].append(Tensor(head_R))
             self.inputs['screen_frame'].append(Tensor(screen_frame))
         print(f'Input dict filled with data from {n} frames.')
 
-    def postprocess(self, x):
-        return x
-    
     def __call__(self, face_path: str, scene_path: str):
         self.initialize_inputs()
         self.fill_inputs(face_path, scene_path)
         self.preprocess_inputs()
-        out = self.eve(self.inputs)
-        return self.postprocess(out)
+        return self.eve(self.inputs)
 
 
 if __name__ == '__main__':
