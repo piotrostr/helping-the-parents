@@ -4,6 +4,7 @@ import ffmpeg
 import torch
 import glob
 import pickle
+import argparse
 
 from face_alignment import FaceAlignment, LandmarksType
 from torch import Tensor
@@ -58,7 +59,8 @@ class EyeTracker:
                 self.inputs[k] = frames
                 continue
             self.inputs[k] = torch.stack(v).unsqueeze(0).to(self.device)
-        print('Inputs preprocessed.')
+        torch.save(self.inputs, 'inputs.pt')
+        print('Inputs preprocessed and saved.')
 
     def initialize_inputs(self):
         self.inputs = {}
@@ -205,12 +207,30 @@ class EyeTracker:
         return self.eve(self.inputs)
 
 
+def chunk(inputs: dict, size: int):
+    _inputs = inputs.copy()
+    for k, v in _inputs.items():
+        _inputs[k] = v[:, :size]
+        print(_inputs[k].shape)
+    return _inputs
+
+
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--input_path', type=str, help='input path')
+    args = parser.parse_args()
     eyetracker = EyeTracker()
-    out = eyetracker('./data/face.mp4', './data/scene.mp4')
-    for k, v in out.items():
-        out[k] = v.detach().cpu()
-    with open('out.pkl', 'wb') as f:
-        pickle.dump(out, f)
-    print(out['PoG_px_final'])
+    if not args.input_path:
+        out = eyetracker('./data/face.mp4', './data/scene.mp4')
+        for k, v in out.items():
+            out[k] = v.detach().cpu()
+        with open('out.pkl', 'wb') as f:
+            pickle.dump(out, f)
+        print(out['PoG_px_final'])
+    else:
+        print('Using already create inputs.')
+        inp = torch.load(args.input_path)
+        inputs = chunk(inp, 100)
+        out = eyetracker.eve(inp)
+        print(out['PoG_px_final'])
 
