@@ -94,7 +94,7 @@ class DefaultConfig(object):
     eye_net_rnn_num_cells = 1
     eye_net_rnn_num_features = 128
     eye_net_static_num_features = 128
-    eye_net_use_head_pose_input = False  # this can be true and probably should
+    eye_net_use_head_pose_input = True  # this can be true and probably should
     loss_coeff_PoG_cm_initial = 0.0
     loss_coeff_g_ang_initial = 1.0
     loss_coeff_pupil_size = 1.0

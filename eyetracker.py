@@ -5,19 +5,20 @@ import torch
 import glob
 import pickle
 
+from face_alignment import FaceAlignment, LandmarksType
 from torch import Tensor
 from scipy import io as sio
-from face_alignment import FaceAlignment, LandmarksType
 from eve import EVE
 from utils import true_tensor
 from preprocess import (
     calibrate, 
-    normalize, 
-    undistort_image, 
+    undistort,
     preprocess_frames,
-    get_origin_of_gaze,
     get_frames_and_timestamps
 )
+
+from head_pose import HeadPoseEstimator
+from normalize import normalize
 
 
 class EyeTracker:
@@ -31,15 +32,12 @@ class EyeTracker:
         self.load_calibration_images()
         
     def load_models(self):
-        self.fa2d = FaceAlignment(LandmarksType._2D,
-                                  flip_input=False,
-                                  device=str(self.device),
-                                  face_detector='blazeface')
-        self.fa3d = FaceAlignment(LandmarksType._3D,
+        self.fa = FaceAlignment(LandmarksType._3D,
                                   flip_input=False,
                                   device=str(self.device),
                                   face_detector='blazeface')
         self.eve = EVE().to(self.device)
+        self.head_pose_estimator = HeadPoseEstimator()
         print('Models loaded.')
 
     def load_calibration_images(self):
@@ -68,17 +66,21 @@ class EyeTracker:
         self.inputs['pixels_per_millimeter'] = []
         self.inputs['camera_transformation'] = []
         self.inputs['inv_camera_transformation'] = []
+        self.inputs['left_eye_patch'] = []
+        self.inputs['left_h'] = []
         self.inputs['left_o'] = []
-        self.inputs['left_o_validity'] = []
-        self.inputs['right_o'] = []
-        self.inputs['right_o_validity'] = []
         self.inputs['left_R'] = []
-        self.inputs['left_R_validity'] = []
+        self.inputs['left_W'] = []
+        self.inputs['right_eye_patch'] = []
+        self.inputs['right_h'] = []
+        self.inputs['right_o'] = []
         self.inputs['right_R'] = []
+        self.inputs['right_W'] = []
+        self.inputs['left_o_validity'] = []
+        self.inputs['left_R_validity'] = []
+        self.inputs['right_o_validity'] = []
         self.inputs['right_R_validity'] = []
         self.inputs['head_R'] = []
-        self.inputs['left_eye_patch'] = []
-        self.inputs['right_eye_patch'] = []
         self.inputs['timestamps'] = []
         self.inputs['screen_frame'] = []
         self.inputs['screen_timestamps'] = []
@@ -91,6 +93,16 @@ class EyeTracker:
         :returns: 
             inputs dict ready to be fed straight into EVE
         """
+        time_horizon = 1000  # ms
+        decay_per_ms = 0.95
+
+        # TODO get those params
+        screen_w = 1920
+        screen_h = 1080
+        ppm = 8.93  # 227 px per inch
+        mpp = 1 / ppm  
+            self.inputs['facial_landmarks'].append(Tensor(landmarks_2d))
+
         ret, mtx, dist, rvecs, tvecs = calibrate(self.images)
 
         face_frames, timestamps = get_frames_and_timestamps(face)
@@ -113,29 +125,44 @@ class EyeTracker:
 
         for face_frame, screen_frame in zip(face_frames, screen_frames):
             face_frame = cv2.resize(face_frame, (1920, 1080))
-            [preds] = self.fa2d.get_landmarks(face_frame)
-            [preds_3d] = self.fa3d.get_landmarks(face_frame)
-            landmarks = [
-                preds[36], preds[39],  # left eye corners
-                preds[42], preds[45],  # right eye corners
-                preds[48], preds[54]   # mouth corners
-            ]
-            ret, rvec, tvec = cv2.solvePnP(face_pts, 
-                                           np.array(landmarks),
-                                           mtx, 
-                                           dist,
-                                           flags=cv2.SOLVEPNP_SQPNP)
-            rotation_m, _ = cv2.Rodrigues(rvec)
-            ext_mtx = np.hstack([rotation_m, tvec])
-            ext_mtx = np.vstack([ext_mtx, [0, 0, 0, 1]])
-            inv = np.linalg.inv(ext_mtx)   
+            frame = face_frame.copy()
 
-            gc = np.array([-127.79, 4.62, -12.02])  # 3D gaze target position
-            head_R, dat = normalize(face_frame, mtx, dist, landmarks, gc)
-            left_eye, right_eye = dat
-            left_eye_patch, _, _, left_R, left_W = left_eye
-            right_eye_patch, _, _, right_R, right_W = right_eye
-            left_o, right_o = get_origin_of_gaze(preds_3d)
+            # Read intrinsics -> camera_matrix, distortion
+            # TODO do this with ai
+            camera_matrix, distortion = mtx, dist
+
+            # undistort
+            frame = undistort(frame, camera_matrix, distortion, input_w, input_h)
+
+            # get transf and inverse transf from extrinsincs
+            # TODO
+
+            # detect face and landmarks
+            [landmarks_3d] = fa.get_landmarks(frame)
+            landmarks_2d = landmarks_3d[:, :2]
+
+            # smooth landmarks with ema
+            # TODO
+
+            # estimage head pose using head_pose_estimator
+            out = self.head_pose_estimator(frame, landmarks_2d, camera_matrix)
+            rvec, tvec, o_l, o_r, o_f = out
+            head_pose = (rvec, tvec)
+            head_R, jacobian = cv2.Rodrigues(rvec)
+            gaze_origins_3D = [o_l, o_r, o_f]
+
+            # smooth gaze origin with ema
+            # TODO
+
+            # Data Normalization procedure
+            left = normalize(frame, camera_matrix, head_pose, o_l)
+            left_eye_patch, left_head, left_R, left_W = left
+
+            right = normalize(frame, camera_matrix, head_pose, o_r)
+            right_eye_patch, right_head, right_R, right_W = right
+
+            face = normalize(frame, camera_matrix, head_pose, o_f, is_face=True)
+            face_patch, face_head, face_R, face_W  = face
 
             self.inputs['camera_transformation'].append(Tensor(ext_mtx))
             self.inputs['inv_camera_transformation'].append(Tensor(inv))
@@ -152,7 +179,7 @@ class EyeTracker:
     def postprocess(self, x):
         return x
     
-    def infer(self, face_path: str, scene_path: str):
+    def __call__(self, face_path: str, scene_path: str):
         self.initialize_inputs()
         self.fill_inputs(face_path, scene_path)
         self.preprocess_inputs()
@@ -162,31 +189,10 @@ class EyeTracker:
 
 if __name__ == '__main__':
     eyetracker = EyeTracker()
-    out = eyetracker.infer('./data/face.mp4', './data/scene.mp4')
+    out = eyetracker('./data/face.mp4', './data/scene.mp4')
     for k, v in out.items():
         out[k] = v.detach().cpu()
     with open('out.pkl', 'wb') as f:
         pickle.dump(out, f)
     print(out['PoG_px_final'])
-
-    """
-    !!! preprocessing steps:
-
-    1) intrinsic matrix calibration using opencv and ChArUco board 
-    2) extrinsic camera calibration using mirrors [1]
-    3) undistort the frames
-    4) detect face
-    5) detect face-region landmarks
-    6) perform 3D morphable model (3DMM) to 3D landmarks [2]
-    7) apply 'data normalization' for yielding eye patches [3, 4]
-       under assumptions: 
-           virtual camera is located 60cm away from the gaze origin
-           focal length of 1800mm
-
-
-    [1] https://www.jstage.jst.go.jp/article/ipsjtcva/8/0/8_11/_pdf/-char/en
-    [2] https://openresearch.surrey.ac.uk/discovery/delivery/44SUR_INST:ResearchRepository/12139198320002346#13140605970002346
-    [3] https://www.cv-foundation.org/openaccess/content_cvpr_2014/papers/Sugano_Learning-by-Synthesis_for_Appearance-based_2014_CVPR_paper.pdf
-    [4] https://www.perceptualui.org/publications/zhang18_etra.pdf 
-    """
 
