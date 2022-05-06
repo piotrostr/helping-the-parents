@@ -98,7 +98,6 @@ class EyeTracker:
         time_horizon = 1000  # ms
         decay_per_ms = 0.95
 
-        # TODO get those params
         input_w = 1920
         input_h = 1080
         # those have to be deduced, 
@@ -152,12 +151,13 @@ class EyeTracker:
             inv_camera_transformation = inv = np.linalg.inv(ext_mtx)
             """
             Then, it should be possible to define the data field
-            "camera_transformation" (from camera-perspective to screen-space),
-            for example, as:
-            where t_x is the horizontal offset (in mm) between camera-center and top-left screen-corner,
-            and t_y is the vertical offset (in mm) between camera-center and top-left screen-corner,
+            "camera_transformation" (from camera-perspective to screen-space), 
+            for example, as: where t_x is the horizontal offset (in mm) between 
+            camera-center and top-left screen-corner, and t_y is the vertical 
+            offset (in mm) between camera-center and top-left screen-corner,
             based on Fig. 2.1 (page 14) of my doctoral dissertation (see attached PDF),
-            then apply a further scaling (multiply by pixels-per-millimeter) to arrive at the screen position in pixels.
+            then apply a further scaling (multiply by pixels-per-millimeter) 
+            to arrive at the screen position in pixels.
             """
 
             # detect face and landmarks
